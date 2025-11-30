@@ -175,8 +175,6 @@ class FileUploadController extends Controller
         }
     }
 
-    Log::debug("status: {$pagesTotal} pages total, {$pagesProcessed} processed for {$uuid}");
-
     $done = ($pagesTotal > 0 && $pagesProcessed >= $pagesTotal);
 
     // cleanup temporary uploaded file if present
