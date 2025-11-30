@@ -1729,6 +1729,20 @@
              class="transition-all duration-300 ease-in-out overflow-hidden max-h-0 opacity-0"
         >
             <div class="space-y-4 border-t border-gray-200 pt-4">
+                <!-- Translate with AI -->
+                <div class="flex items-center">
+                    <input
+                        type="checkbox"
+                        name="translate"
+                        id="translate"
+                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        {{ old('translate', true) ? '' : 'checked' }}
+                    >
+                    <label for="translate" class="ml-2 block text-gray-700 font-medium">
+                        Translate text using AI
+                    </label>
+                </div>
+
                 <!-- Greyscale Checkbox -->
                 <div class="flex items-center">
                     <input

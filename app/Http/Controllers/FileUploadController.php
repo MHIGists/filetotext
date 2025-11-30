@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Cache;
 use App\Jobs\ProcessPdfPage;
 use Illuminate\Http\Request;
+use RuntimeException;
 use Str;
 use App\Jobs\ProcessImage;
 use Dompdf\Dompdf;
@@ -23,11 +24,14 @@ class FileUploadController extends Controller
 
         $request->merge([
             'greyscale' => $request->has('greyscale'),
+            'translate' => $request->has('translate'),
         ]);
+
 
         $allowedImageTypes = ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'webp'];
         $allowedDocs = ['pdf', 'ppt', 'pptx'];
 
+        // todo move this out of the controller
         $rules = [
             'consent' => 'accepted',
             'file' => 'nullable|file|mimes:' . implode(',', array_merge($allowedDocs, $allowedImageTypes)),
@@ -37,6 +41,7 @@ class FileUploadController extends Controller
             'dpi' => 'required|integer|in:50,100,150,200,250,300',
             'languages' => 'nullable|array',
             'languages.*' => 'string|in:' . implode(',', self::getTesseractInstalledLanguages()),
+            'translate' => 'boolean|required',
         ];
         if (!$request->hasFile('file') && !$request->hasFile('photo')) {
             return back()->withErrors(['file' => 'Please upload a file or take a picture.'])->withInput();
@@ -78,7 +83,8 @@ class FileUploadController extends Controller
                 $request->input('greyscale', true),
                 $request->input('dpi', 300),
                 $request->input('languages'),
-                $request->input('contrast', 1)
+                $request->input('contrast', 1),
+                $request->input('translate', false)
             );
         }
 
@@ -97,7 +103,7 @@ class FileUploadController extends Controller
 
         // Ensure the output directory exists
         if (!is_dir($pdfOutputDir) && !mkdir($pdfOutputDir, 0755, true) && !is_dir($pdfOutputDir)) {
-            throw new \RuntimeException(sprintf('Directory "%s" was not created', $pdfOutputDir));
+            throw new RuntimeException(sprintf('Directory "%s" was not created', $pdfOutputDir));
         }
 
         // Convert PPTX to PDF using LibreOffice
@@ -174,6 +180,7 @@ class FileUploadController extends Controller
     if ($done) {
         // cleanup temporary uploaded file if present
         if (!empty($cache['filePath']) && file_exists($cache['filePath'])) {
+            // yes i know it's bad practice
             @unlink($cache['filePath']);
         }
     }
@@ -217,6 +224,7 @@ class FileUploadController extends Controller
 
     public static function getTesseractInstalledLanguages(): array
     {
+        // Check your tesseract installation
         $languageMap = [
             'Arabic' => 'ara',
             'Armenian' => 'hye',
@@ -357,7 +365,7 @@ class FileUploadController extends Controller
 //        }
         return $languageMap;
     }
-	
+
 	public function exportPdf(Request $request)
 {
     $pages = $request->input('pages', []);
@@ -444,7 +452,7 @@ class FileUploadController extends Controller
         'Content-Disposition' => 'attachment; filename="export.pdf"',
     ]);
 }
-	
+
 	public function exportPptx(Request $request)
     {
         $pages = $request->input('pages', []);

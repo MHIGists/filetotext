@@ -2,12 +2,14 @@
 
 namespace App\Jobs;
 
+use App\Services\ChatGPTService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Imagick;
+use Log;
 use thiagoalessio\TesseractOCR\TesseractOCR;
 use Cache;
 
@@ -21,6 +23,7 @@ class ProcessImage implements ShouldQueue
     public int $dpi;
     public array $languages;
     public int $applyContrast;
+    public bool $translate;
 
     public function __construct(
         string $imagePath,
@@ -28,7 +31,8 @@ class ProcessImage implements ShouldQueue
         bool $greyscale = true,
         int $dpi = 300,
         array $languages = [],
-        int $applyContrast = 0
+        int $applyContrast = 0,
+        bool $translate = false
     ) {
         $this->imagePath = $imagePath;
         $this->uuid = $uuid;
@@ -36,6 +40,7 @@ class ProcessImage implements ShouldQueue
         $this->dpi = $dpi;
         $this->languages = $languages;
         $this->applyContrast = $applyContrast;
+        $this->translate = $translate;
     }
 
     public function handle()
@@ -74,7 +79,11 @@ class ProcessImage implements ShouldQueue
             unlink($tempImagePath);
 
             // Match PDF job caching format exactly
-            $cache[$pageNum]['text'] = preg_replace('/^\s*$(\r\n?|\n)/m', '', $text);
+            if ($this->translate){
+                $cache[$pageNum]['text'] = ChatGPTService::askToTranslate($text);
+            }else{
+                $cache[$pageNum]['text'] = preg_replace('/^\s*$(\r\n?|\n)/m', '', $text);
+            }
             $cache[$pageNum]['page'] = $pageNum;
             $cache[$pageNum]['image'] = $base64Image;
             Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(5));
@@ -88,8 +97,8 @@ class ProcessImage implements ShouldQueue
                 unlink($tempImagePath);
             }
 
-            \Log::debug($exception->getMessage());
-            \Log::debug($exception->getTraceAsString());
+            Log::debug($exception->getMessage());
+            Log::debug($exception->getTraceAsString());
         }
     }
 }
