@@ -91,6 +91,8 @@ class ProcessPdfPage implements ShouldQueue
             Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(5));
 
         } catch (Throwable $exception) {
+            Log::error($exception->getMessage());
+            Log::error($exception->getTraceAsString());
             if (isset($tempImagePath, $imagick)) {
                 $cache[$pageNum]['text'] = 'No text found';
                 $cache[$pageNum]['page'] = $pageNum;
@@ -99,8 +101,6 @@ class ProcessPdfPage implements ShouldQueue
                 $imagick->clear();
                 unlink($tempImagePath);
             }
-            Log::debug($exception->getMessage());
-            Log::debug($exception->getTraceAsString());
         }
     }
 }

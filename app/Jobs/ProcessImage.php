@@ -89,6 +89,8 @@ class ProcessImage implements ShouldQueue
             $cache[$pageNum]['image'] = $base64Image;
             Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(5));
         } catch (Throwable $exception) {
+            Log::error($exception->getMessage());
+            Log::error($exception->getTraceAsString());
             if (isset($imagick, $tempImagePath)) {
                 $cache[$pageNum]['text'] = 'No text found';
                 $cache[$pageNum]['page'] = $pageNum;
@@ -97,9 +99,6 @@ class ProcessImage implements ShouldQueue
                 $imagick->clear();
                 unlink($tempImagePath);
             }
-
-            Log::debug($exception->getMessage());
-            Log::debug($exception->getTraceAsString());
         }
     }
 }
