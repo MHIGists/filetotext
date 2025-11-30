@@ -12,6 +12,7 @@ use Imagick;
 use Log;
 use thiagoalessio\TesseractOCR\TesseractOCR;
 use Cache;
+use Throwable;
 
 class ProcessPdfPage implements ShouldQueue
 {
@@ -89,7 +90,7 @@ class ProcessPdfPage implements ShouldQueue
             $cache[$pageNum]['image'] = $base64Image;
             Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(5));
 
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             if (isset($tempImagePath, $imagick)) {
                 $cache[$pageNum]['text'] = 'No text found';
                 $cache[$pageNum]['page'] = $pageNum;

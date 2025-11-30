@@ -60,7 +60,8 @@ class FileUploadController extends Controller
                 $request->input('greyscale', true),
                 $request->input('dpi', 300),
                 $request->input('languages'),
-                $request->input('contrast', 1)
+                $request->input('contrast', 1),
+                $request->input('translate', false)
             );
         } elseif ($ext === 'pdf') {
             $uuid = $this->extractTextFromPdfImages(
@@ -68,7 +69,8 @@ class FileUploadController extends Controller
                 $request->input('greyscale', true),
                 $request->input('dpi', 300),
                 $request->input('languages'),
-                $request->input('contrast', 1)
+                $request->input('contrast', 1),
+                $request->input('translate', false)
             );
         } elseif (in_array($ext, $allowedImageTypes)) {
             $results = [
@@ -129,7 +131,7 @@ class FileUploadController extends Controller
     }
 
 
-    private function extractTextFromPdfImages($filePath, $greyscale = false, $dpi = 300, $languages = ['eng'], int $contrast = 1)
+    private function extractTextFromPdfImages($filePath, $greyscale = false, $dpi = 300, $languages = ['eng'], int $contrast = 1, bool $translate = false)
     {
         if (!file_exists($filePath)) {
             return "PDF file not found at: $filePath";
@@ -143,7 +145,7 @@ class FileUploadController extends Controller
         ];
         Cache::put($uuid, $results, now()->addMinutes(5));
         for ($i = 0; $i < $pageCount; $i++) {
-            ProcessPdfPage::dispatch($filePath, $i, $uuid, $greyscale, $dpi, $languages, $contrast);
+            ProcessPdfPage::dispatch($filePath, $i, $uuid, $greyscale, $dpi, $languages, $contrast, $translate);
         }
 
         return $uuid;
