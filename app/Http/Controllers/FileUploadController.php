@@ -179,12 +179,10 @@ class FileUploadController extends Controller
 
     $done = ($pagesTotal > 0 && $pagesProcessed >= $pagesTotal);
 
-    if ($done) {
-        // cleanup temporary uploaded file if present
-        if (!empty($cache['filePath']) && file_exists($cache['filePath'])) {
-            // yes i know it's bad practice
-            @unlink($cache['filePath']);
-        }
+    // cleanup temporary uploaded file if present
+    if ($done && !empty($cache['filePath']) && file_exists($cache['filePath'])) {
+        // yes i know it's bad practice
+        @unlink($cache['filePath']);
     }
 
     return response()->json([

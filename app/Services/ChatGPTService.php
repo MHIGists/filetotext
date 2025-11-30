@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Exception;
 use Http;
 
 class ChatGPTService
@@ -10,7 +11,7 @@ class ChatGPTService
     {
         $key = config('openai.api_key');
         if ($key) {
-            throw new \Exception('OpenAI API key not configured.');
+            throw new Exception('OpenAI API key not configured.');
         }
 
         $systemPrompt = <<<EOD
@@ -21,7 +22,7 @@ EOD;
             'Authorization' => "Bearer {$key}",
             'Content-Type' => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
-            'model' => 'gpt-4', // or 'gpt-4', 'gpt-3.5-turbo' if available
+            'model' => 'gpt-4',
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $text],
