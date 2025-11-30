@@ -48,6 +48,7 @@ class ProcessImage implements ShouldQueue
     {
         $pageNum = 1;
         try {
+            Log::debug($this->imagePath);
             $imagick = new Imagick($this->imagePath);
             $imagick->setResolution($this->dpi, $this->dpi);
 

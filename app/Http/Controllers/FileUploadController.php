@@ -93,7 +93,7 @@ class FileUploadController extends Controller
         return redirect()->route('processing', ['uuid' => $uuid]);
     }
 
-    private function extractTextFromPptImages($filePath, $greyscale = false, $dpi = 300, $languages = ['eng'], int $contrast = 1)
+    private function extractTextFromPptImages($filePath, $greyscale = false, $dpi = 300, $languages = ['eng'], int $contrast = 1, bool $translate = false)
     {
         if (!file_exists($filePath)) {
             return "PPT file not found at: $filePath";
@@ -127,7 +127,7 @@ class FileUploadController extends Controller
         Cache::put($uuid, $results, now()->addMinutes(5));
 
         // Now process the PDF instead of the PPT
-        return $this->extractTextFromPdfImages($pdfOutputPath, $greyscale, $dpi, $languages, $contrast);
+        return $this->extractTextFromPdfImages($pdfOutputPath, $greyscale, $dpi, $languages, $contrast, $translate);
     }
 
 
