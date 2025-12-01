@@ -57,9 +57,9 @@
         return {
             pages: 0, // processed pages (backend "remaining" == processed/ready)
             totalPages: {{ \Illuminate\Support\Facades\Cache::get($uuid)['pages'] ?? 0 }},
-            results: '',          // visible results (shown when done)
-            hiddenResults: '',    // preloaded HTML kept hidden until done
-            loadedPages: 0,       // how many pages we've actually fetched/preloaded
+            results: '',          // visible results (shown as they're fetched)
+            hiddenResults: '',    // kept for backward compatibility (not used when showing results immediately)
+            loadedPages: 0,       // how many pages we've actually fetched/displayed
             processing: true,
             done: false,
             expired: false,
@@ -91,11 +91,11 @@
                             this.totalPages = data.totalPages;
                         }
 
-                        // Preload newly available pages into hiddenResults
+                        // Fetch and display newly available pages
                         await this.preloadAvailablePages();
 
                         if (data.done) {
-                            // Force the bar to 100% and reveal everything
+                            // Force the bar to 100% and mark as done
                             if (this.totalPages > 0) this.pages = this.totalPages;
                             this.done = true;
                             this.processing = false;
@@ -104,15 +104,14 @@
                             if (this.totalPages === 0) {
                                 let page = this.loadedPages + 1;
                                 // Try to fetch until we hit a hole (404/204)
-                                while (await this.fetchPage(page, true)) {
+                                while (await this.fetchPage(page, false)) {
                                     this.loadedPages = page;
                                     page++;
                                     if (page > 2000) break;
                                 }
                             }
 
-                            // Reveal preloaded content
-                            this.results = this.hiddenResults;
+                            // Show action footer when done
                             document.getElementById('actionFooter').classList.remove('hidden');
                             break;
                         }
@@ -127,10 +126,10 @@
             },
 
             async preloadAvailablePages() {
-                // Fetch pages we haven't loaded yet, up to `pages` (processed count)
+                // Fetch and display pages we haven't loaded yet, up to `pages` (processed count)
                 if (this.pages > this.loadedPages) {
                     for (let page = this.loadedPages + 1; page <= this.pages; page++) {
-                        const ok = await this.fetchPage(page, true);
+                        const ok = await this.fetchPage(page, false);
                         if (ok) this.loadedPages = page;
                         // If a page isn't ready yet (404/204), stop trying this cycle
                         else break;
@@ -141,10 +140,34 @@
             async fetchPage(page, hidden = false) {
                 try {
                     const res = await fetch(`/result/${jobId}/page/${page}`);
-                    if (!res.ok || res.status === 404 || res.status === 204) return false;
+                    if (!res.ok || res.status === 404 || res.status === 204) {
+                        // Display error for this specific page
+                        const errorHtml = `<div class="bg-white shadow-md rounded-lg mb-8 overflow-hidden">
+                            <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
+                            <div class="p-4 text-red-600">error</div>
+                        </div>`;
+                        if (hidden) {
+                            this.hiddenResults += errorHtml;
+                        } else {
+                            this.results += errorHtml;
+                        }
+                        return false;
+                    }
 
                     const html = await res.text();
-                    if (!html.trim()) return false;
+                    if (!html.trim()) {
+                        // Display error for this specific page if content is empty
+                        const errorHtml = `<div class="bg-white shadow-md rounded-lg mb-8 overflow-hidden">
+                            <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
+                            <div class="p-4 text-red-600">error</div>
+                        </div>`;
+                        if (hidden) {
+                            this.hiddenResults += errorHtml;
+                        } else {
+                            this.results += errorHtml;
+                        }
+                        return false;
+                    }
 
                     if (hidden) {
                         // Append to hiddenResults so images start loading while invisible
@@ -154,7 +177,16 @@
                     }
                     return true;
                 } catch (err) {
-                    this.error = '{{ __('Error while loading results.') }}';
+                    // Display error for this specific page
+                    const errorHtml = `<div class="bg-white shadow-md rounded-lg mb-8 overflow-hidden">
+                        <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
+                        <div class="p-4 text-red-600">error</div>
+                    </div>`;
+                    if (hidden) {
+                        this.hiddenResults += errorHtml;
+                    } else {
+                        this.results += errorHtml;
+                    }
                     console.error(err);
                     return false;
                 }
@@ -285,7 +317,7 @@
 
     <!-- Results -->
     <div class="max-w-4xl mx-auto py-12 px-4">
-        <div x-show="done && !expired && !error" class="py-10 px-4 bg-white rounded-lg shadow-md">
+        <div x-show="(results.length > 0 || done) && !expired && !error" class="py-10 px-4 bg-white rounded-lg shadow-md">
             <h2 class="text-3xl font-bold text-center mb-8">{{ __('Results from text detection') }}</h2>
             <div id="results" class="text-left space-y-4" x-html="results"></div>
         </div>
