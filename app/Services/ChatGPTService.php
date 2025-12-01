@@ -10,7 +10,7 @@ class ChatGPTService
     public static function askToTranslate(string $text): ?string
     {
         $key = config('openai.api_key');
-        if ($key) {
+        if ($key === null) {
             throw new Exception('OpenAI API key not configured.');
         }
 

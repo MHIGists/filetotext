@@ -28,7 +28,6 @@ class FileUploadController extends Controller
             'translate' => $request->has('translate'),
         ]);
 
-
         $allowedImageTypes = ['jpg', 'jpeg', 'png', 'bmp', 'tiff', 'webp'];
         $allowedDocs = ['pdf', 'ppt', 'pptx'];
 
