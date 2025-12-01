@@ -63,11 +63,12 @@
             processing: true,
             done: false,
             expired: false,
-            error: '',
+            hasError: false, // Track if there are any errors (but don't show expired message)
             pollInterval: 3000,
             maxRetries: 1000,
             attempts: 0,
             fetchingPages: new Set(), // Track pages currently being fetched to prevent concurrent fetches
+            pageElements: new Map(), // Map of page number to DOM element for efficient sorting
 
             async startPolling() {
                 // Initialize results container reference for direct DOM manipulation
@@ -120,8 +121,10 @@
                             break;
                         }
                     } catch (err) {
-                        this.error = '{{ __('Error while checking status.') }}';
+                        // Set error flag but don't set expired - errors are different from expiration
+                        this.hasError = true;
                         console.error(err);
+                        // Continue polling on error, don't break
                     }
 
                     this.attempts++;
@@ -195,10 +198,56 @@
                 const temp = document.createElement('div');
                 temp.innerHTML = html.trim();
                 
-                // Append each child node directly to avoid string concatenation
-                while (temp.firstChild) {
-                    this.resultsContainer.appendChild(temp.firstChild);
+                // Extract page number from the HTML to store in our map
+                const pageDiv = temp.querySelector('.bg-gray-200');
+                let pageNum = null;
+                if (pageDiv) {
+                    const pageText = pageDiv.textContent.trim();
+                    const match = pageText.match(/Page\s+(\d+)/);
+                    if (match) {
+                        pageNum = parseInt(match[1], 10);
+                    }
                 }
+                
+                // Get the main page container (first child div)
+                const pageElement = temp.firstElementChild;
+                if (pageElement && pageNum !== null) {
+                    // Store element with page number for sorting
+                    this.pageElements.set(pageNum, pageElement);
+                    
+                    // Reorder all pages
+                    this.reorderPages();
+                } else if (pageElement) {
+                    // If we can't extract page number, just append (fallback)
+                    this.resultsContainer.appendChild(pageElement);
+                }
+            },
+
+            reorderPages() {
+                if (!this.resultsContainer) return;
+                
+                // Get all page numbers and sort them
+                const sortedPages = Array.from(this.pageElements.keys()).sort((a, b) => a - b);
+                
+                // Use DocumentFragment for efficient batch DOM manipulation (prevents reflows)
+                const fragment = document.createDocumentFragment();
+                
+                // Collect all elements in sorted order
+                for (const pageNum of sortedPages) {
+                    const element = this.pageElements.get(pageNum);
+                    if (element) {
+                        // Remove from current parent if it has one (will be moved, not cloned)
+                        // This is safe even if parent is null
+                        if (element.parentNode) {
+                            element.parentNode.removeChild(element);
+                        }
+                        fragment.appendChild(element);
+                    }
+                }
+                
+                // Replace all children in one operation (efficient, single reflow)
+                this.resultsContainer.innerHTML = '';
+                this.resultsContainer.appendChild(fragment);
             },
 
             appendErrorPage(page) {
@@ -207,13 +256,21 @@
                 }
                 if (!this.resultsContainer) return;
 
+                // Mark that we have errors but don't set expired
+                this.hasError = true;
+
                 const errorDiv = document.createElement('div');
                 errorDiv.className = 'bg-white shadow-md rounded-lg mb-8 overflow-hidden';
                 errorDiv.innerHTML = `
                     <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
                     <div class="p-4 text-red-600">error</div>
                 `;
-                this.resultsContainer.appendChild(errorDiv);
+                
+                // Store in pageElements map for sorting
+                this.pageElements.set(page, errorDiv);
+                
+                // Reorder all pages
+                this.reorderPages();
             }
         }
     }
@@ -338,18 +395,15 @@
 
     <!-- Results -->
     <div class="max-w-4xl mx-auto py-12 px-4">
-        <div x-show="(fetchedPages.size > 0 || done) && !expired && !error" class="py-10 px-4 bg-white rounded-lg shadow-md">
+        <div x-show="(fetchedPages.size > 0 || done) && !expired" class="py-10 px-4 bg-white rounded-lg shadow-md">
             <h2 class="text-3xl font-bold text-center mb-8">{{ __('Results from text detection') }}</h2>
             <div id="results" class="text-left space-y-4"></div>
         </div>
 
-        <!-- Expired -->
-        <p x-show="expired" class="text-red-600 text-center mt-10">
+        <!-- Expired - Only show when explicitly expired from status endpoint, not on fetch errors -->
+        <p x-show="expired && !hasError" class="text-red-600 text-center mt-10">
             {{ __('This upload is no longer available — please upload again.') }}
         </p>
-
-        <!-- Error -->
-        <p x-show="error" class="text-red-600 text-center mt-10" x-text="error"></p>
     </div>
 </main>
 
