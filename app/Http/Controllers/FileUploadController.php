@@ -6,6 +6,7 @@ use Cache;
 use App\Jobs\ProcessPdfPage;
 use Illuminate\Http\Request;
 use RuntimeException;
+use Storage;
 use Str;
 use App\Jobs\ProcessImage;
 use Dompdf\Dompdf;
@@ -50,7 +51,7 @@ class FileUploadController extends Controller
         $file = $request->file('file') ?? $request->file('photo');
         $ext = $file->getClientOriginalExtension();
         $path = $file->store('uploads', 'public');
-        $fullPath = storage_path('app/public/'.$path);
+        $fullPath = Storage::disk('public')->path($path);
 
         $uuid = (string)Str::uuid();
 
