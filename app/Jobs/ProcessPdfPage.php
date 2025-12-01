@@ -88,7 +88,7 @@ class ProcessPdfPage implements ShouldQueue
             }
             $cache[$pageNum]['page'] = $pageNum;
             $cache[$pageNum]['image'] = $base64Image;
-            Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(5));
+            Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(15));
 
         } catch (Throwable $exception) {
             Log::error($exception->getMessage());
@@ -97,7 +97,7 @@ class ProcessPdfPage implements ShouldQueue
                 $cache[$pageNum]['text'] = 'No text found';
                 $cache[$pageNum]['page'] = $pageNum;
                 $cache[$pageNum]['image'] = $base64Image ?? 'No image found!';
-                Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(5));
+                Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(15));
                 $imagick->clear();
                 unlink($tempImagePath);
             }
