@@ -22,7 +22,7 @@ EOD;
             'Authorization' => "Bearer {$key}",
             'Content-Type' => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
-            'model' => 'gpt-5',
+            'model' => 'gpt-5.1',
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $text],
