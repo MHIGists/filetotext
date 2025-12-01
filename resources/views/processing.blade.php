@@ -57,8 +57,8 @@
         return {
             pages: 0, // processed pages (backend "remaining" == processed/ready)
             totalPages: {{ \Illuminate\Support\Facades\Cache::get($uuid)['pages'] ?? 0 }},
-            results: '',          // visible results (shown as they're fetched)
-            hiddenResults: '',    // kept for backward compatibility (not used when showing results immediately)
+            resultsContainer: null, // DOM reference to results container
+            fetchedPages: new Set(), // Track which pages have been fetched to prevent duplicates
             loadedPages: 0,       // how many pages we've actually fetched/displayed
             processing: true,
             done: false,
@@ -67,8 +67,12 @@
             pollInterval: 3000,
             maxRetries: 1000,
             attempts: 0,
+            fetchingPages: new Set(), // Track pages currently being fetched to prevent concurrent fetches
 
             async startPolling() {
+                // Initialize results container reference for direct DOM manipulation
+                this.resultsContainer = document.getElementById('results');
+                
                 while (!this.done && this.attempts < this.maxRetries) {
                     try {
                         const res = await fetch(`/status/${jobId}`);
@@ -104,7 +108,7 @@
                             if (this.totalPages === 0) {
                                 let page = this.loadedPages + 1;
                                 // Try to fetch until we hit a hole (404/204)
-                                while (await this.fetchPage(page, false)) {
+                                while (await this.fetchPage(page)) {
                                     this.loadedPages = page;
                                     page++;
                                     if (page > 2000) break;
@@ -128,68 +132,88 @@
             async preloadAvailablePages() {
                 // Fetch and display pages we haven't loaded yet, up to `pages` (processed count)
                 if (this.pages > this.loadedPages) {
+                    const fetchPromises = [];
                     for (let page = this.loadedPages + 1; page <= this.pages; page++) {
-                        const ok = await this.fetchPage(page, false);
-                        if (ok) this.loadedPages = page;
-                        // If a page isn't ready yet (404/204), stop trying this cycle
-                        else break;
+                        // Skip if already fetched or currently being fetched
+                        if (this.fetchedPages.has(page) || this.fetchingPages.has(page)) {
+                            continue;
+                        }
+                        fetchPromises.push(this.fetchPage(page));
                     }
+                    // Wait for all fetches to complete
+                    await Promise.allSettled(fetchPromises);
                 }
             },
 
-            async fetchPage(page, hidden = false) {
+            async fetchPage(page) {
+                // Prevent duplicate fetches
+                if (this.fetchedPages.has(page) || this.fetchingPages.has(page)) {
+                    return false;
+                }
+
+                this.fetchingPages.add(page);
+                
                 try {
                     const res = await fetch(`/result/${jobId}/page/${page}`);
                     if (!res.ok || res.status === 404 || res.status === 204) {
-                        // Display error for this specific page
-                        const errorHtml = `<div class="bg-white shadow-md rounded-lg mb-8 overflow-hidden">
-                            <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
-                            <div class="p-4 text-red-600">error</div>
-                        </div>`;
-                        if (hidden) {
-                            this.hiddenResults += errorHtml;
-                        } else {
-                            this.results += errorHtml;
-                        }
+                        this.appendErrorPage(page);
+                        this.fetchedPages.add(page);
+                        this.fetchingPages.delete(page);
                         return false;
                     }
 
                     const html = await res.text();
                     if (!html.trim()) {
-                        // Display error for this specific page if content is empty
-                        const errorHtml = `<div class="bg-white shadow-md rounded-lg mb-8 overflow-hidden">
-                            <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
-                            <div class="p-4 text-red-600">error</div>
-                        </div>`;
-                        if (hidden) {
-                            this.hiddenResults += errorHtml;
-                        } else {
-                            this.results += errorHtml;
-                        }
+                        this.appendErrorPage(page);
+                        this.fetchedPages.add(page);
+                        this.fetchingPages.delete(page);
                         return false;
                     }
 
-                    if (hidden) {
-                        // Append to hiddenResults so images start loading while invisible
-                        this.hiddenResults += html;
-                    } else {
-                        this.results += html;
-                    }
+                    // Use direct DOM manipulation instead of string concatenation
+                    this.appendPageToDOM(html);
+                    this.fetchedPages.add(page);
+                    this.loadedPages = Math.max(this.loadedPages, page);
+                    this.fetchingPages.delete(page);
                     return true;
                 } catch (err) {
-                    // Display error for this specific page
-                    const errorHtml = `<div class="bg-white shadow-md rounded-lg mb-8 overflow-hidden">
-                        <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
-                        <div class="p-4 text-red-600">error</div>
-                    </div>`;
-                    if (hidden) {
-                        this.hiddenResults += errorHtml;
-                    } else {
-                        this.results += errorHtml;
-                    }
+                    this.appendErrorPage(page);
+                    this.fetchedPages.add(page);
+                    this.fetchingPages.delete(page);
                     console.error(err);
                     return false;
                 }
+            },
+
+            appendPageToDOM(html) {
+                if (!this.resultsContainer) {
+                    this.resultsContainer = document.getElementById('results');
+                }
+                if (!this.resultsContainer) return;
+
+                // Create a temporary container to parse HTML
+                const temp = document.createElement('div');
+                temp.innerHTML = html.trim();
+                
+                // Append each child node directly to avoid string concatenation
+                while (temp.firstChild) {
+                    this.resultsContainer.appendChild(temp.firstChild);
+                }
+            },
+
+            appendErrorPage(page) {
+                if (!this.resultsContainer) {
+                    this.resultsContainer = document.getElementById('results');
+                }
+                if (!this.resultsContainer) return;
+
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'bg-white shadow-md rounded-lg mb-8 overflow-hidden';
+                errorDiv.innerHTML = `
+                    <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
+                    <div class="p-4 text-red-600">error</div>
+                `;
+                this.resultsContainer.appendChild(errorDiv);
             }
         }
     }
@@ -288,7 +312,7 @@
 
 <main
     x-data="progressTracker('{{ $uuid }}')"
-    x-init="startPolling"
+    x-init="startPolling()"
     class="flex-grow"
     style="margin-top: var(--header-height)"
 >
@@ -312,14 +336,11 @@
         </div>
     </div>
 
-    <!-- Hidden preloaded content (images will load while hidden) -->
-    <div class="hidden" x-html="hiddenResults"></div>
-
     <!-- Results -->
     <div class="max-w-4xl mx-auto py-12 px-4">
-        <div x-show="(results.length > 0 || done) && !expired && !error" class="py-10 px-4 bg-white rounded-lg shadow-md">
+        <div x-show="(fetchedPages.size > 0 || done) && !expired && !error" class="py-10 px-4 bg-white rounded-lg shadow-md">
             <h2 class="text-3xl font-bold text-center mb-8">{{ __('Results from text detection') }}</h2>
-            <div id="results" class="text-left space-y-4" x-html="results"></div>
+            <div id="results" class="text-left space-y-4"></div>
         </div>
 
         <!-- Expired -->
