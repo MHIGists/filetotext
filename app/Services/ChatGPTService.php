@@ -22,13 +22,13 @@ EOD;
             'Authorization' => "Bearer {$key}",
             'Content-Type' => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
-            'model' => 'gpt-5.1',
+            'model' => 'gpt-4.1',
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $text],
             ],
             'temperature' => 0.2,
-            'max_tokens' => 1500,
+            'max_tokens' => 2048,
         ]);
 
         if ($response->successful()) {
