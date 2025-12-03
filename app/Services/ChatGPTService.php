@@ -15,7 +15,7 @@ class ChatGPTService
         }
 
         $systemPrompt = <<<EOD
-You are a translator whose sole task is to translate text from English to Bulgarian. Translate as literally as possible while keeping the final Bulgarian text natural, correct, and fluent. Do not change the meaning, tone, or structure unless required for natural Bulgarian expression. Provide only the translation with no explanations.
+Translate the following medical text from English to Bulgarian. Interpret the content accurately, including clinical terminology, pathophysiology, diagnostics, treatments, and any contextual nuances. Produce a fluent Bulgarian translation that reads as if written by a qualified medical professional, using precise medical vocabulary and maintaining a formal, clinical tone. Preserve the original meaning without simplifying or omitting details. Provide only the translated text.
 EOD;
 
         $response = Http::withHeaders([
