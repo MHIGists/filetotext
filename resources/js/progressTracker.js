@@ -159,10 +159,17 @@ export function progressTracker(jobId, totalPages = 0) {
             // Get the main page container (first child div)
             const pageElement = temp.firstElementChild;
             if (pageElement && pageNum !== null) {
+                // Check if this page already exists in the DOM
+                const existingElement = this.pageElements.get(pageNum);
+                if (existingElement && existingElement.parentNode === this.resultsContainer) {
+                    // Page already exists and is displayed, don't add it again
+                    return;
+                }
+                
                 // Store element with page number for sorting
                 this.pageElements.set(pageNum, pageElement);
                 
-                // Reorder all pages
+                // Only reorder if we need to (smart reordering that doesn't remove existing pages)
                 this.reorderPages();
             } else if (pageElement) {
                 // If we can't extract page number, just append (fallback)
@@ -176,25 +183,69 @@ export function progressTracker(jobId, totalPages = 0) {
             // Get all page numbers and sort them
             const sortedPages = Array.from(this.pageElements.keys()).sort((a, b) => a - b);
             
-            // Use DocumentFragment for efficient batch DOM manipulation (prevents reflows)
-            const fragment = document.createDocumentFragment();
-            
-            // Collect all elements in sorted order
-            for (const pageNum of sortedPages) {
-                const element = this.pageElements.get(pageNum);
-                if (element) {
-                    // Remove from current parent if it has one (will be moved, not cloned)
-                    // This is safe even if parent is null
-                    if (element.parentNode) {
-                        element.parentNode.removeChild(element);
+            // Get current children in DOM order and create a map for quick lookup
+            const currentChildren = Array.from(this.resultsContainer.children);
+            const pageToElementMap = new Map();
+            currentChildren.forEach((child) => {
+                // Find which page this element represents by checking our pageElements map
+                for (const [pageNum, element] of this.pageElements.entries()) {
+                    if (element === child) {
+                        pageToElementMap.set(pageNum, child);
+                        break;
                     }
-                    fragment.appendChild(element);
+                }
+            });
+            
+            // Check if reordering is needed
+            let needsReorder = false;
+            if (currentChildren.length !== sortedPages.length) {
+                needsReorder = true;
+            } else {
+                // Check if elements are in the correct order
+                for (let i = 0; i < sortedPages.length; i++) {
+                    const expectedPage = sortedPages[i];
+                    const expectedElement = this.pageElements.get(expectedPage);
+                    if (currentChildren[i] !== expectedElement) {
+                        needsReorder = true;
+                        break;
+                    }
                 }
             }
             
-            // Replace all children in one operation (efficient, single reflow)
-            this.resultsContainer.innerHTML = '';
-            this.resultsContainer.appendChild(fragment);
+            // Only reorder if necessary
+            if (!needsReorder) return;
+            
+            // Smart reordering: iterate through sorted pages and ensure each is in correct position
+            // This preserves existing DOM elements and only moves/reorders them
+            for (let i = 0; i < sortedPages.length; i++) {
+                const pageNum = sortedPages[i];
+                const element = this.pageElements.get(pageNum);
+                if (!element) continue;
+                
+                const isInDOM = element.parentNode === this.resultsContainer;
+                const currentPosition = isInDOM ? Array.from(this.resultsContainer.children).indexOf(element) : -1;
+                
+                if (!isInDOM) {
+                    // New element - insert at correct position
+                    const referenceNode = i < this.resultsContainer.children.length 
+                        ? this.resultsContainer.children[i] 
+                        : null;
+                    if (referenceNode) {
+                        this.resultsContainer.insertBefore(element, referenceNode);
+                    } else {
+                        this.resultsContainer.appendChild(element);
+                    }
+                } else if (currentPosition !== i) {
+                    // Element exists but is in wrong position - move it to correct position
+                    const referenceNode = i < this.resultsContainer.children.length 
+                        ? this.resultsContainer.children[i] 
+                        : null;
+                    // Only move if reference node is different (avoid unnecessary moves)
+                    if (referenceNode && referenceNode !== element) {
+                        this.resultsContainer.insertBefore(element, referenceNode);
+                    }
+                }
+            }
         },
 
         appendErrorPage(page) {
@@ -202,6 +253,13 @@ export function progressTracker(jobId, totalPages = 0) {
                 this.resultsContainer = document.getElementById('results');
             }
             if (!this.resultsContainer) return;
+
+            // Check if error page already exists
+            const existingElement = this.pageElements.get(page);
+            if (existingElement && existingElement.parentNode === this.resultsContainer) {
+                // Error page already displayed, don't add it again
+                return;
+            }
 
             // Mark that we have errors but don't set expired
             this.hasError = true;
@@ -216,7 +274,7 @@ export function progressTracker(jobId, totalPages = 0) {
             // Store in pageElements map for sorting
             this.pageElements.set(page, errorDiv);
             
-            // Reorder all pages
+            // Reorder all pages (smart reordering that doesn't remove existing pages)
             this.reorderPages();
         }
     }
