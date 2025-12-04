@@ -16,11 +16,14 @@ export function progressTracker(jobId, totalPages = 0) {
         attempts: 0,
         fetchingPages: new Set(), // Track pages currently being fetched to prevent concurrent fetches
         pageElements: new Map(), // Map of page number to DOM element for efficient sorting
+        pageRetries: new Map(), // Track retry attempts per page for 404 errors
+        maxRetriesPerPage: 3, // Maximum number of retries for a single page on 404
+        retryDelay: 2000, // Delay between retries in milliseconds
 
         async startPolling() {
             // Initialize results container reference for direct DOM manipulation
             this.resultsContainer = document.getElementById('results');
-            
+
             while (!this.done && this.attempts < this.maxRetries) {
                 try {
                     const res = await fetch(`/status/${jobId}`);
@@ -95,20 +98,52 @@ export function progressTracker(jobId, totalPages = 0) {
             }
         },
 
-        async fetchPage(page) {
-            // Prevent duplicate fetches
-            if (this.fetchedPages.has(page) || this.fetchingPages.has(page)) {
+        async fetchPage(page, retryAttempt = 0) {
+            // Prevent duplicate fetches (unless we're retrying)
+            if (this.fetchedPages.has(page)) {
+                return false;
+            }
+
+            // If already fetching and not a retry, skip
+            if (this.fetchingPages.has(page) && retryAttempt === 0) {
                 return false;
             }
 
             this.fetchingPages.add(page);
-            
+
             try {
                 const res = await fetch(`/result/${jobId}/page/${page}`);
-                if (!res.ok || res.status === 404 || res.status === 204) {
+
+                // Handle 404 with retry logic
+                if (res.status === 404) {
+                    const currentRetries = this.pageRetries.get(page) || 0;
+
+                    if (currentRetries < this.maxRetriesPerPage) {
+                        // Retry the fetch after a delay
+                        this.pageRetries.set(page, currentRetries + 1);
+                        this.fetchingPages.delete(page);
+
+                        // Wait before retrying
+                        await new Promise(r => setTimeout(r, this.retryDelay));
+
+                        // Retry the fetch
+                        return await this.fetchPage(page, retryAttempt + 1);
+                    } else {
+                        // Max retries reached, show error
+                        this.appendErrorPage(page);
+                        this.fetchedPages.add(page);
+                        this.fetchingPages.delete(page);
+                        this.pageRetries.delete(page); // Clean up retry tracking
+                        return false;
+                    }
+                }
+
+                // Handle other non-OK status codes (204, etc.)
+                if (!res.ok || res.status === 204) {
                     this.appendErrorPage(page);
                     this.fetchedPages.add(page);
                     this.fetchingPages.delete(page);
+                    this.pageRetries.delete(page); // Clean up retry tracking
                     return false;
                 }
 
@@ -117,21 +152,40 @@ export function progressTracker(jobId, totalPages = 0) {
                     this.appendErrorPage(page);
                     this.fetchedPages.add(page);
                     this.fetchingPages.delete(page);
+                    this.pageRetries.delete(page); // Clean up retry tracking
                     return false;
                 }
 
-                // Use direct DOM manipulation instead of string concatenation
+                // Success! Clear retry tracking and add page to DOM
+                this.pageRetries.delete(page);
                 this.appendPageToDOM(html);
                 this.fetchedPages.add(page);
                 this.loadedPages = Math.max(this.loadedPages, page);
                 this.fetchingPages.delete(page);
                 return true;
             } catch (err) {
-                this.appendErrorPage(page);
-                this.fetchedPages.add(page);
-                this.fetchingPages.delete(page);
-                console.error(err);
-                return false;
+                // Network errors - also retry on these
+                const currentRetries = this.pageRetries.get(page) || 0;
+
+                if (currentRetries < this.maxRetriesPerPage) {
+                    // Retry the fetch after a delay
+                    this.pageRetries.set(page, currentRetries + 1);
+                    this.fetchingPages.delete(page);
+
+                    // Wait before retrying
+                    await new Promise(r => setTimeout(r, this.retryDelay));
+
+                    // Retry the fetch
+                    return await this.fetchPage(page, retryAttempt + 1);
+                } else {
+                    // Max retries reached, show error
+                    this.appendErrorPage(page);
+                    this.fetchedPages.add(page);
+                    this.fetchingPages.delete(page);
+                    this.pageRetries.delete(page); // Clean up retry tracking
+                    console.error(err);
+                    return false;
+                }
             }
         },
 
@@ -144,7 +198,7 @@ export function progressTracker(jobId, totalPages = 0) {
             // Create a temporary container to parse HTML
             const temp = document.createElement('div');
             temp.innerHTML = html.trim();
-            
+
             // Extract page number from the HTML to store in our map
             const pageDiv = temp.querySelector('.bg-gray-200');
             let pageNum = null;
@@ -155,7 +209,7 @@ export function progressTracker(jobId, totalPages = 0) {
                     pageNum = parseInt(match[1], 10);
                 }
             }
-            
+
             // Get the main page container (first child div)
             const pageElement = temp.firstElementChild;
             if (pageElement && pageNum !== null) {
@@ -165,10 +219,10 @@ export function progressTracker(jobId, totalPages = 0) {
                     // Page already exists and is displayed, don't add it again
                     return;
                 }
-                
+
                 // Store element with page number for sorting
                 this.pageElements.set(pageNum, pageElement);
-                
+
                 // Only reorder if we need to (smart reordering that doesn't remove existing pages)
                 this.reorderPages();
             } else if (pageElement) {
@@ -179,10 +233,10 @@ export function progressTracker(jobId, totalPages = 0) {
 
         reorderPages() {
             if (!this.resultsContainer) return;
-            
+
             // Get all page numbers and sort them
             const sortedPages = Array.from(this.pageElements.keys()).sort((a, b) => a - b);
-            
+
             // Get current children in DOM order and create a map for quick lookup
             const currentChildren = Array.from(this.resultsContainer.children);
             const pageToElementMap = new Map();
@@ -195,7 +249,7 @@ export function progressTracker(jobId, totalPages = 0) {
                     }
                 }
             });
-            
+
             // Check if reordering is needed
             let needsReorder = false;
             if (currentChildren.length !== sortedPages.length) {
@@ -211,24 +265,24 @@ export function progressTracker(jobId, totalPages = 0) {
                     }
                 }
             }
-            
+
             // Only reorder if necessary
             if (!needsReorder) return;
-            
+
             // Smart reordering: iterate through sorted pages and ensure each is in correct position
             // This preserves existing DOM elements and only moves/reorders them
             for (let i = 0; i < sortedPages.length; i++) {
                 const pageNum = sortedPages[i];
                 const element = this.pageElements.get(pageNum);
                 if (!element) continue;
-                
+
                 const isInDOM = element.parentNode === this.resultsContainer;
                 const currentPosition = isInDOM ? Array.from(this.resultsContainer.children).indexOf(element) : -1;
-                
+
                 if (!isInDOM) {
                     // New element - insert at correct position
-                    const referenceNode = i < this.resultsContainer.children.length 
-                        ? this.resultsContainer.children[i] 
+                    const referenceNode = i < this.resultsContainer.children.length
+                        ? this.resultsContainer.children[i]
                         : null;
                     if (referenceNode) {
                         this.resultsContainer.insertBefore(element, referenceNode);
@@ -237,8 +291,8 @@ export function progressTracker(jobId, totalPages = 0) {
                     }
                 } else if (currentPosition !== i) {
                     // Element exists but is in wrong position - move it to correct position
-                    const referenceNode = i < this.resultsContainer.children.length 
-                        ? this.resultsContainer.children[i] 
+                    const referenceNode = i < this.resultsContainer.children.length
+                        ? this.resultsContainer.children[i]
                         : null;
                     // Only move if reference node is different (avoid unnecessary moves)
                     if (referenceNode && referenceNode !== element) {
@@ -270,10 +324,10 @@ export function progressTracker(jobId, totalPages = 0) {
                 <div class="bg-gray-200 px-4 py-2 font-semibold text-gray-700">Page ${page}</div>
                 <div class="p-4 text-red-600">error</div>
             `;
-            
+
             // Store in pageElements map for sorting
             this.pageElements.set(page, errorDiv);
-            
+
             // Reorder all pages (smart reordering that doesn't remove existing pages)
             this.reorderPages();
         }
