@@ -78,7 +78,7 @@ class ProcessPdfPage implements ShouldQueue
             $base64Image = 'data:image/jpeg;base64,' . base64_encode($imagick->getImageBlob());
 
             $imagick->clear();
-            unlink($tempImagePath);
+            @unlink($tempImagePath);
 
             // Step 3: Update cached results
             if ($this->translate) {
@@ -99,7 +99,7 @@ class ProcessPdfPage implements ShouldQueue
                 $cache[$pageNum]['image'] = $base64Image ?? 'No image found!';
                 Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(15));
                 $imagick->clear();
-                unlink($tempImagePath);
+                @unlink($tempImagePath);
             }
         }
     }

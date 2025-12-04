@@ -77,7 +77,7 @@ class ProcessImage implements ShouldQueue
             $base64Image = 'data:image/jpeg;base64,' . base64_encode($imagick->getImageBlob());
 
             $imagick->clear();
-            unlink($tempImagePath);
+            @unlink($tempImagePath);
 
             // Match PDF job caching format exactly
             if ($this->translate){
@@ -97,7 +97,7 @@ class ProcessImage implements ShouldQueue
                 $cache[$pageNum]['image'] = $base64Image ?? 'No image found!';
                 Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(15));
                 $imagick->clear();
-                unlink($tempImagePath);
+                @unlink($tempImagePath);
             }
         }
     }
