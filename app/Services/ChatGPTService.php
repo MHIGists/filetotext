@@ -31,7 +31,7 @@ EOD;
                     ['role' => 'system', 'content' => $systemPrompt],
                     ['role' => 'user', 'content' => $text],
                 ],
-                'temperature' => 0.2,
+                'temperature' => 0,
                 'max_tokens' => 8192,
             ]);
 
