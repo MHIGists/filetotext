@@ -150,8 +150,24 @@
     class="flex-grow"
     style="margin-top: var(--header-height)"
 >
-    <!-- Processing state -->
-    <div x-show="processing" class="text-center pt-20 px-4">
+    <!-- Expired Banner - Shows at top when expired -->
+    <div x-show="expired" x-cloak class="bg-yellow-50 border-b-2 border-yellow-400 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 text-yellow-600 mr-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                    <p class="text-yellow-800 font-medium">
+                        {{ __('This upload is no longer available — please upload again.') }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Processing state - Hide when expired, show banner instead -->
+    <div x-show="processing && !expired" class="text-center pt-20 px-4">
         <h1 class="text-3xl font-bold mb-4">{{ __('Processing document...') }}</h1>
         <p class="text-gray-600 mb-10">{{ __('Please wait. This can take a minute or two.') }}</p>
         <svg class="mx-auto animate-spin h-12 w-12 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -170,17 +186,12 @@
         </div>
     </div>
 
-    <!-- Results -->
+    <!-- Results - Always show if there are results, regardless of expired status -->
     <div class="max-w-4xl mx-auto py-12 px-4">
-        <div x-show="(fetchedPages.size > 0 || done) && !expired" class="py-10 px-4 bg-white rounded-lg shadow-md">
+        <div x-show="(fetchedPages.size > 0 || done)" class="py-10 px-4 bg-white rounded-lg shadow-md">
             <h2 class="text-3xl font-bold text-center mb-8">{{ __('Results from text detection') }}</h2>
             <div id="results" class="text-left space-y-4"></div>
         </div>
-
-        <!-- Expired - Only show when explicitly expired from status endpoint, not on fetch errors -->
-        <p x-show="expired && !hasError" class="text-red-600 text-center mt-10">
-            {{ __('This upload is no longer available — please upload again.') }}
-        </p>
     </div>
 </main>
 
