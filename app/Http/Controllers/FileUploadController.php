@@ -194,7 +194,7 @@ class FileUploadController extends Controller
     {
         $cache = Cache::get($uuid.'_'.$pageNum);
 
-        if (!$cache) {
+        if ($cache === null) {
             abort(404, "Result not found or not ready yet.");
         }
         return view('resultPage', ['result' => $cache[$pageNum]]);

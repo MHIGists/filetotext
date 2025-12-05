@@ -18,7 +18,7 @@ export function progressTracker(jobId, totalPages = 0) {
         pageElements: new Map(), // Map of page number to DOM element for efficient sorting
         pageRetries: new Map(), // Track retry attempts per page for 404 errors
         maxRetriesPerPage: 3, // Maximum number of retries for a single page on 404
-        retryDelay: 5000, // Delay between retries in milliseconds
+        retryDelay: 10000, // Delay between retries in milliseconds
 
         async startPolling() {
             // Initialize results container reference for direct DOM manipulation
