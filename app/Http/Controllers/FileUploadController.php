@@ -190,21 +190,6 @@ class FileUploadController extends Controller
     ]);
 }
 
-
-    public function result($uuid)
-    {
-        $cache = Cache::get($uuid);
-
-        if (!$cache) {
-            abort(404, "Result not found or not ready yet.");
-        }
-        $results = [];
-        for ($i = 1; $i < $cache['pages']; $i++) {
-            $results[] = Cache::get($uuid.'_'.$i);
-        }
-        return view('results', ['results' => $results]);
-    }
-
     public function resultPage($uuid, $pageNum)
     {
         $cache = Cache::get($uuid.'_'.$pageNum);
