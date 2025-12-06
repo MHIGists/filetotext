@@ -8,20 +8,30 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class ChatGPTService
 {
-    private const RPM_LIMIT = 500;
+    private const RPM_LIMIT = 450;             // requests per 60 seconds The actual RPM is 500
+    private const TOKEN_LIMIT = 400_000;       // The actual TPM is 500k
     private const WINDOW_SECONDS = 60;
 
     public static function askToTranslate(string $text): ?string
     {
-        $key = 'openai-translate-rpm';
+        $rpmKey = 'openai-translate-rpm';
 
-        if (RateLimiter::tooManyAttempts($key, self::RPM_LIMIT)) {
-            $wait = RateLimiter::availableIn($key);
-            sleep($wait);
+        if (RateLimiter::tooManyAttempts($rpmKey, self::RPM_LIMIT)) {
+            sleep(RateLimiter::availableIn($rpmKey));
+        }
+        RateLimiter::hit($rpmKey, self::WINDOW_SECONDS);
+        $tokenKey = 'openai-translate-input-tokens';
+        $estimatedTokens = self::estimateTokens($text);
+
+        // Ensure adding these tokens does not exceed TPM
+        while (RateLimiter::attempts($tokenKey) + $estimatedTokens > self::TOKEN_LIMIT) {
+            sleep(RateLimiter::availableIn($tokenKey));
         }
 
-        // Consume one slot
-        RateLimiter::hit($key, self::WINDOW_SECONDS);
+        // Increment token usage
+        RateLimiter::hit($tokenKey, self::WINDOW_SECONDS, $estimatedTokens);
+
+        // ---- API CALL ----
         $apiKey = config('openai.api_key');
         if ($apiKey === null) {
             throw new Exception('OpenAI API key not configured.');
@@ -49,12 +59,14 @@ EOD;
             ]);
 
         if ($response->successful()) {
-            $choices = $response->json('choices');
-            if (isset($choices[0]['message']['content'])) {
-                return trim($choices[0]['message']['content']);
-            }
+            return trim($response->json('choices.0.message.content', ''));
         }
 
         return null;
+    }
+
+    private static function estimateTokens(string $input): int
+    {
+        return (int)ceil(strlen($input) / 4);
     }
 }
