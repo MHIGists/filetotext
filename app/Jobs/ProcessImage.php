@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Imagick;
 use Log;
+use RuntimeException;
 use thiagoalessio\TesseractOCR\TesseractOCR;
 use Cache;
 use Throwable;
@@ -29,12 +30,13 @@ class ProcessImage implements ShouldQueue
     public function __construct(
         string $imagePath,
         string $uuid,
-        bool $greyscale = true,
-        int $dpi = 300,
-        array $languages = [],
-        int $applyContrast = 0,
-        bool $translate = false
-    ) {
+        bool   $greyscale = true,
+        int    $dpi = 300,
+        array  $languages = [],
+        int    $applyContrast = 0,
+        bool   $translate = false
+    )
+    {
         $this->imagePath = $imagePath;
         $this->uuid = $uuid;
         $this->greyscale = $greyscale;
@@ -47,6 +49,10 @@ class ProcessImage implements ShouldQueue
     public function handle()
     {
         $pageNum = 1;
+        $tempImagePath = null;
+        $imagick = null;
+        $displayImagick = null;
+
         try {
             $imagick = new Imagick($this->imagePath);
             $imagick->setResolution($this->dpi, $this->dpi);
@@ -56,15 +62,20 @@ class ProcessImage implements ShouldQueue
                 $imagick->thresholdImage(0.5 * Imagick::getQuantum());
             }
 
-           if ($this->applyContrast != 0) {
-    			$increase = $this->applyContrast > 0;
-    			$imagick->sigmoidalContrastImage($increase, abs($this->applyContrast), 0);
-			}
+            if ($this->applyContrast != 0) {
+                $increase = $this->applyContrast > 0;
+                $imagick->sigmoidalContrastImage($increase, abs($this->applyContrast), 0);
+            }
 
-            $tempImagePath = tempnam(sys_get_temp_dir(), 'ocrimg_') . '.jpg';
+            $displayImagick = clone $imagick;
+            $tempImagePath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'ocrimg_'.uniqid('', true).'.jpg';
+
             $imagick->setImageFormat('jpeg');
-            $imagick->writeImage($tempImagePath);
+            if ($imagick->writeImage($tempImagePath) === false || !file_exists($tempImagePath)) {
+                throw new RuntimeException("Failed to write temporary image: {$tempImagePath}");
+            }
 
+            // OCR
             $text = (new TesseractOCR($tempImagePath))
                 ->withoutTempFiles()
                 ->dpi($this->dpi)
@@ -72,33 +83,46 @@ class ProcessImage implements ShouldQueue
                 ->threadLimit(1)
                 ->run(20);
 
-            $imagick->readImage($tempImagePath);
-            $imagick->resizeImage(1024, 1024, Imagick::FILTER_LANCZOS, 1, true);
-            $base64Image = 'data:image/jpeg;base64,' . base64_encode($imagick->getImageBlob());
+            $displayImagick->resizeImage(1024, 1024, Imagick::FILTER_LANCZOS, 1, true);
+            $base64Image = 'data:image/jpeg;base64,'.base64_encode($displayImagick->getImageBlob());
 
-            $imagick->clear();
-            @unlink($tempImagePath);
-
-            // Match PDF job caching format exactly
-            if ($this->translate){
+            if ($this->translate) {
                 $cache[$pageNum]['text'] = ChatGPTService::askToTranslate($text);
-            }else{
+            } else {
                 $cache[$pageNum]['text'] = preg_replace('/^\s*$(\r\n?|\n)/m', '', $text);
             }
             $cache[$pageNum]['page'] = $pageNum;
             $cache[$pageNum]['image'] = $base64Image;
-            Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(15));
+            Cache::put($this->uuid.'_'.$pageNum, $cache, now()->addMinutes(15));
         } catch (Throwable $exception) {
             Log::error($exception->getMessage());
             Log::error($exception->getTraceAsString());
-            if (isset($imagick, $tempImagePath)) {
-                $cache[$pageNum]['text'] = 'No text found';
-                $cache[$pageNum]['page'] = $pageNum;
-                $cache[$pageNum]['image'] = $base64Image ?? 'No image found!';
-                Cache::put($this->uuid . '_' . $pageNum, $cache, now()->addMinutes(15));
-                $imagick->clear();
-                @unlink($tempImagePath);
+
+            $cache[$pageNum]['text'] = 'No text found';
+            $cache[$pageNum]['page'] = $pageNum;
+            $cache[$pageNum]['image'] = $base64Image ?? 'No image found!';
+            Cache::put($this->uuid.'_'.$pageNum, $cache, now()->addMinutes(15));
+        } finally {
+            if ($imagick instanceof Imagick) {
+                try {
+                    $imagick->clear();
+                } catch (Throwable $_) {
+                }
+            }
+
+            if ($displayImagick instanceof Imagick) {
+                try {
+                    $displayImagick->clear();
+                } catch (Throwable $_) {
+                }
+            }
+
+            if ($tempImagePath && file_exists($tempImagePath)) {
+                if (!@unlink($tempImagePath)) {
+                    Log::warning("Unable to unlink temp image: {$tempImagePath}");
+                }
             }
         }
     }
+
 }
