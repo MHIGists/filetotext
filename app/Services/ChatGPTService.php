@@ -4,13 +4,26 @@ namespace App\Services;
 
 use Exception;
 use Http;
+use Illuminate\Support\Facades\RateLimiter;
 
 class ChatGPTService
 {
+    private const RPM_LIMIT = 500;
+    private const WINDOW_SECONDS = 60;
+
     public static function askToTranslate(string $text): ?string
     {
-        $key = config('openai.api_key');
-        if ($key === null) {
+        $key = 'openai-translate-rpm';
+
+        if (RateLimiter::tooManyAttempts($key, self::RPM_LIMIT)) {
+            $wait = RateLimiter::availableIn($key);
+            sleep($wait);
+        }
+
+        // Consume one slot
+        RateLimiter::hit($key, self::WINDOW_SECONDS);
+        $apiKey = config('openai.api_key');
+        if ($apiKey === null) {
             throw new Exception('OpenAI API key not configured.');
         }
 
@@ -22,7 +35,7 @@ EOD;
             ->connectTimeout(30)
             ->retry(3, 2000)
             ->withHeaders([
-                'Authorization' => "Bearer {$key}",
+                'Authorization' => "Bearer {$apiKey}",
                 'Content-Type' => 'application/json',
             ])
             ->post('https://api.openai.com/v1/chat/completions', [
@@ -34,7 +47,6 @@ EOD;
                 'temperature' => 0,
                 'max_tokens' => 8192,
             ]);
-
 
         if ($response->successful()) {
             $choices = $response->json('choices');
