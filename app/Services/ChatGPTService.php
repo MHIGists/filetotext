@@ -2,9 +2,14 @@
 
 namespace App\Services;
 
+use Error;
 use Exception;
 use Http;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\RateLimiter;
+use Log;
+use Response;
 
 class ChatGPTService
 {
@@ -26,8 +31,18 @@ EOD;
 
         $response = Http::timeout(120)
             ->connectTimeout(30)
-            ->retry(3, 40000, function ($response) {
-                return $response->status() === 429;
+            ->retry(3, 40000, function ($exception) {
+                if ($exception instanceof RequestException) {
+                    $response = $exception->response;
+                    if ($response && $response->status() === 429) {
+                        return true;
+                    }
+                }
+                if ($exception->getCode() === 429){
+                    return true;
+                }
+                Log::debug(class_basename($exception));
+                return false;
             })
             ->withHeaders([
                 'Authorization' => "Bearer {$apiKey}",
