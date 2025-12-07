@@ -26,7 +26,9 @@ EOD;
 
         $response = Http::timeout(120)
             ->connectTimeout(30)
-            ->retry(3, 10000)
+            ->retry(3, 40000, function ($response) {
+                return $response->status() === 429;
+            })
             ->withHeaders([
                 'Authorization' => "Bearer {$apiKey}",
                 'Content-Type' => 'application/json',
